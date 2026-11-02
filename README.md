@@ -155,3 +155,18 @@ You must understand every line you submit. We check this with your video and in 
 5. Paste the repository link and the video link in the application form.
 
 We will run `pnpm install && pnpm check && pnpm typecheck && pnpm test` on your repository.
+
+## Decisions
+
+1. **The database enforces the rules, not only the API.** Money is whole cents, and `CHECK` constraints reject zero, negative and non-integer amounts. A share is either fully paid (`paid_at` and `payment_key` both set) or fully unpaid (both null). Foreign keys and `UNIQUE (bill_id, member_id)` and `UNIQUE (home_id, position)` protect the links and the member order. The API code can have a bug, and the data still stays correct. (This even caught a real bug while I built it: D1 sends JS numbers as floats, so my first split query produced decimal cents and the `CHECK` stopped it. I fixed it with a `CAST`.)
+2. **Payments use one atomic compare-and-set.** `UPDATE shares SET paid_at = ?, payment_key = ? WHERE id = ? AND bill_id = ? AND paid_at IS NULL`. If two requests pay the same share at once, the database lets only one change the row. The loser reads the share: the same key gets `200` with the same result, a different key gets `409`. I did not use a separate "check, then write" step, because it has a race between the two steps. The trade-off: the key is stored on the share, so there is no separate idempotency table. That is enough here because one share can only be paid once.
+3. **A bill and its shares are saved in one transaction, and the split is done in SQL.** `INSERT ... SELECT` with `ROW_NUMBER()` gives each member `floor(total / n)` cents, and the first `total % n` members (in join order) get one extra cent. The shares always add up to the total, and a bill is never saved without its shares. The trade-off: the split logic lives in SQL instead of TypeScript, which is harder to unit test alone, so the tests check it through the API.
+4. **The web page retries with the same Idempotency-Key.** A key is made once per share and reused until the payment succeeds. If the request times out after the server already saved the payment, pressing "Try again" cannot pay twice. Every request has a 10 second timeout, and every failure shows an error message instead of crashing the page.
+
+### Extra endpoints (for the web page)
+
+`GET /api/homes`, `GET /api/homes/:homeId/members`, `GET /api/homes/:homeId/bills`.
+
+### AI use
+
+Claude (Anthropic) helped write the API, the tests in `api/test/edge-cases.test.ts`, and the web page. I reviewed and ran all of it.
