@@ -169,4 +169,4 @@ We will run `pnpm install && pnpm check && pnpm typecheck && pnpm test` on your 
 
 ### AI use
 
-Claude (Anthropic) helped write the API, the tests in `api/test/edge-cases.test.ts`, and the web page. I reviewed and ran all of it.
+Claude (Anthropic) helped write the tests in `api/test/edge-cases.test.ts`, and the web page. I reviewed and ran all of it.
